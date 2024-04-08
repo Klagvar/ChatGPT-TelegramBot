@@ -1,0 +1,16 @@
+{
+  "name": "chatgpt-telegrambot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Klagvar",
+  "license": "ISC",
+  "dependencies": {
+    "telegraf": "^4.15.3",
+    "openai": "^4.26.0",
+    "aws-sdk": "^2.1550.0"
+  }
+}
