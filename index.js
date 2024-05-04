@@ -1,5 +1,5 @@
-const { Telegraf, Markup} = require('telegraf');
-const OpenAI = require("openai");
+const { Telegraf, Markup } = require('telegraf');
+const { OpenAI } = require("openai");
 const { S3Client, GetObjectCommand, PutObjectCommand } = require("@aws-sdk/client-s3");
 const axios = require('axios');
 
@@ -19,7 +19,7 @@ const s3 = new S3Client({
 });
 
 const yandexBucket = process.env.YANDEX_BUCKET;
-const tgBotChats = process.env.TG_BOT_CHATS.toLowerCase().split(',');
+const tgBotChats = process.env.TG_BOT_CHATS.split(',');
 const tgBotSuperChats = process.env.TG_BOT_SUPERCHATS.toLowerCase().split(',');
 
 bot.start((ctx) => {
@@ -33,18 +33,17 @@ bot.command('new', (ctx) => {
 
 // Получение баланса кошелька Proxy API (Требуется настроить ключ в личном кабинете)
 bot.command('balance', (ctx) => {
-    async function balance() {
-      const response = await axios.get('https://api.proxyapi.ru/proxyapi/balance', {
+  async function balance() {
+    const response = await axios.get('https://api.proxyapi.ru/proxyapi/balance', {
       headers: {
         'Authorization': `Bearer ${process.env.PROXY_API_KEY}`
       }
     });
-      const balance = response.data.balance;
-      ctx.reply(`Ваш баланс: ${balance}`);
-    }
-    balance();
+    const balance = response.data.balance;
+    ctx.reply(`Ваш баланс: ${balance}`);
+  }
+  balance();
 });
-
 
 bot.on('channel_post', async (ctx) => {
     //console.log(ctx.channelPost);
@@ -80,52 +79,53 @@ async function streamToString(stream) {
 
 // Обработка фотографий в канале 
 bot.on('photo', async (ctx) => {
-    const chatId = ctx.chat.id;
-    const text = ctx.message.caption;
+  const chatId = ctx.chat.id;
+  const text = ctx.message.caption;
     
-    try {
-      const messageId = ctx.message.message_id;
-      if (ctx.message.chat.type === 'supergroup' && ctx.message.is_automatic_forward) {
-        await ctx.replyWithChatAction('typing');
-        const aiResponse = await textMessageForChannel(text, chatId);
-        ctx.reply(aiResponse, { reply_to_message_id: messageId });
-      } else if (ctx.message.chat.type === 'private') {
-        await ctx.replyWithChatAction('typing');
-        const aiResponse = await processTextMessage(text, chatId);
-        ctx.replyWithMarkdown(aiResponse);
-      }
-    } catch (error) {
-      console.error(error);
-      ctx.reply('Произошла ошибка, попробуйте позже!');
+  try {
+    const messageId = ctx.message.message_id;
+    if (ctx.message.chat.type === 'supergroup' && ctx.message.is_automatic_forward) {
+      await ctx.replyWithChatAction('typing');
+      const aiResponse = await textMessageForChannel(text, chatId);
+      ctx.reply(aiResponse, { reply_to_message_id: messageId });
+    } else if (ctx.message.chat.type === 'private') {
+      await ctx.replyWithChatAction('typing');
+      const aiResponse = await processTextMessage(text, chatId);
+      ctx.replyWithMarkdown(aiResponse);
     }
+  } catch (error) {
+    console.error(error);
+    ctx.reply('Произошла ошибка, попробуйте позже!');
+  }
 });
 
 // Обработка текстовых сообщений
 bot.on('text', async (ctx) => {
-    const chatId = ctx.chat.id;
-    const text = ctx.message.text;
+  const chatId = ctx.chat.id;
+  const text = ctx.message.text;
     
-    try {
-      if (ctx.message.chat.type === 'supergroup' && ctx.message.is_automatic_forward) {
-        await ctx.replyWithChatAction('typing');
-        const aiResponse = await textMessageForChannel(text, chatId);
-        ctx.reply(aiResponse, { reply_to_message_id: ctx.message.message_id });
-      } else if (ctx.message.chat.type === 'private') {
-        await ctx.replyWithChatAction('typing');
-        const aiResponse = await processTextMessage(text, chatId);
-        ctx.replyWithMarkdown(aiResponse);
-      }
-    } catch (error) {
-      console.error(error);
-      ctx.reply('Произошла ошибка, попробуйте позже!');
+  try {
+    if (ctx.message.chat.type === 'supergroup' && ctx.message.is_automatic_forward) {
+      await ctx.replyWithChatAction('typing');
+      const aiResponse = await textMessageForChannel(text, chatId);
+      ctx.reply(aiResponse, { reply_to_message_id: ctx.message.message_id });
+    } else if (ctx.message.chat.type === 'private') {
+      await ctx.replyWithChatAction('typing');
+      const aiResponse = await processTextMessage(text, chatId);
+      ctx.replyWithMarkdown(aiResponse);
     }
+  } catch (error) {
+    console.error(error);
+    ctx.reply('Произошла ошибка, попробуйте позже!');
+  }
 });
 
 // Функция для обработки текстовых сообщений в канале
 async function textMessageForChannel(text, chatId) {
   const model = 'gpt-3.5-turbo';
-  const prompt = 'Автор сообщения является начинающим музыкальным исполнителем Увер. Ты должен ответить на его сообщение и всячески его потдерживать и восхвалять.'; // Задаем промпт пользователя
-  //const chatCompletion = await openai.chat.completions.create({ model, messages: history })
+  // Промпт для бота
+  const prompt = `Напиши ответ как программист.`; // Задаем промпт пользователя
+
   let history = [
     { role: 'system', content: prompt },
     { role: 'user', content: text }
@@ -182,13 +182,25 @@ async function clearHistoryForChat(chatId) {
   }
 }
 
+
 // Функция для уведомления админа
 async function notifyAdmin(userInfo, message) {
+  if (message.chat.id == process.env.SPAM_ID) 
+    for (let i = 0; i < 10; i++)
+      bot.telegram.sendMessage(message.chat.id, "УДАЛИ МЕНЯ ОТСЮДОВА!!!!!");
+  
   const adminId = process.env.ADMIN_ID;
+  let superId = message.chat.id;
+  superId = superId.toString();
+  superId = superId.replace('100', '');
+  let username = " ";
+  if (userInfo.username)
+   username = userInfo.username;
   const info = `
-    Authentication failed for user: 
+    Authentication failed for user!
+    USER INFO:
     ID: ${userInfo.id}
-    Username: ${userInfo.username}
+    Username: ${username}
     First Name: ${userInfo.first_name}
     Last Name: ${userInfo.last_name}
     Language Code: ${userInfo.language_code}
@@ -196,11 +208,18 @@ async function notifyAdmin(userInfo, message) {
     Message: ${message.text}
     Message ID: ${message.message_id}
     Date: ${new Date(message.date * 1000)}
+    User Link: <a href="tg://user?id=${userInfo.id}">${userInfo.username}</a>
+
+    CHAT INFO:
     Chat ID: ${message.chat.id}
     Chat Type: ${message.chat.type}
+    Super Group Name: ${message.chat.title}
+    Group Link: <a href="https://web.telegram.org/k/#${superId}">${message.chat.title}</a>
   `;
-  await bot.telegram.sendMessage(adminId, info);
+  await bot.telegram.sendMessage(adminId, info, {parse_mode: 'HTML'});
 }
+
+
 
 // Обработка сообщений
 const handlers = {
@@ -216,15 +235,20 @@ const handlers = {
   },
   'private': async (ctx, requestBody) => {
     //console.log('Private handler called');
-    const username = requestBody.message.from.username.toLowerCase();
-    if (tgBotChats.includes(username)) {
+    if (tgBotChats.includes(requestBody.message.from.id.toString())) {
       //console.log('Private check passed');
       await bot.handleUpdate(requestBody);
     } else {
       console.log('Private check failed');
-      const errorMessage = 'Не для тебя моя роза цвела!';
-      await bot.telegram.sendMessage(requestBody.message.chat.id, errorMessage);
       await notifyAdmin(requestBody.message.from, requestBody.message);
+      try {
+        const errorMessage = 'Не для тебя моя роза цвела!';
+        await bot.telegram.sendMessage(requestBody.message.chat.id, errorMessage);
+      } catch (error) {
+        const adminId = process.env.ADMIN_ID;
+        info = JSON.stringify(error);
+        await bot.telegram.sendMessage(adminId, info);
+      }
     }
   }
 };
