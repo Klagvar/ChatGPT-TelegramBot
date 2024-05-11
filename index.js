@@ -2,6 +2,7 @@ const { Telegraf, Markup } = require('telegraf');
 const { OpenAI } = require("openai");
 const { S3Client, GetObjectCommand, PutObjectCommand } = require("@aws-sdk/client-s3");
 const axios = require('axios');
+const winston = require('winston');
 
 const bot = new Telegraf(process.env.TG_BOT_TOKEN);
 const openai = new OpenAI({
@@ -16,6 +17,13 @@ const s3 = new S3Client({
       accessKeyId: process.env.YANDEX_KEY_ID,
       secretAccessKey: process.env.YANDEX_KEY_SECRET
   },
+});
+
+const logger = winston.createLogger({
+  level: 'debug',
+  format: winston.format.json(),
+  defaultMeta: { service: 'user-service' },
+  transports: [new winston.transports.Console()],
 });
 
 const yandexBucket = process.env.YANDEX_BUCKET;
@@ -62,9 +70,8 @@ async function getHistory(chatId) {
     const response = await s3.send(command);
     history = JSON.parse(await streamToString(response.Body));
   } catch (error) {
-    console.error(error);
+    logger.error('ERROR: ', error);
   }
-  
   return history;
 }
 
@@ -91,10 +98,15 @@ bot.on('photo', async (ctx) => {
     } else if (ctx.message.chat.type === 'private') {
       await ctx.replyWithChatAction('typing');
       const aiResponse = await processTextMessage(text, chatId);
-      ctx.replyWithMarkdown(aiResponse);
+      try {
+        await bot.telegram.sendMessage(chatId, aiResponse, {parse_mode: 'Markdown'});
+      } catch (error) {
+        ctx.reply(aiResponse);
+        logger.error('ERROR: ', error);
+      }
     }
   } catch (error) {
-    console.error(error);
+    logger.error('ERROR: ', error);
     ctx.reply('Произошла ошибка, попробуйте позже!');
   }
 });
@@ -112,10 +124,15 @@ bot.on('text', async (ctx) => {
     } else if (ctx.message.chat.type === 'private') {
       await ctx.replyWithChatAction('typing');
       const aiResponse = await processTextMessage(text, chatId);
-      ctx.replyWithMarkdown(aiResponse);
+      try {
+        await bot.telegram.sendMessage(chatId, aiResponse, {parse_mode: 'Markdown'});
+      } catch (error) {
+        ctx.reply(aiResponse);
+        logger.error('ERROR: ', error);
+      }
     }
   } catch (error) {
-    console.error(error);
+    logger.error('ERROR: ', error);
     ctx.reply('Произошла ошибка, попробуйте позже!');
   }
 });
@@ -135,7 +152,7 @@ async function textMessageForChannel(text, chatId) {
   try {
     chatCompletion = await openai.chat.completions.create({ model, messages: history });
   } catch (error) {
-    throw error;
+    logger.error('ERROR: ', error);
   }
 
   const aiResponse = chatCompletion.choices[0].message.content;
@@ -145,30 +162,26 @@ async function textMessageForChannel(text, chatId) {
 // Функция для обработки текстовых сообщений
 async function processTextMessage(text, chatId) {
   const model = 'gpt-3.5-turbo';
-  
   let history = [];
   try {
     history = await getHistory(chatId);
   } catch (error) {
-    console.error(error);
+    logger.error('ERROR: ', error);
   }
   
   history.push({ role: 'user', content: text });
-  
   try {
     const chatCompletion = await openai.chat.completions.create({ model, messages: history });
     const aiResponse = chatCompletion.choices[0].message.content;
     history.push({ role: 'assistant', content: aiResponse });
-    
     await s3.send(new PutObjectCommand({ Bucket: yandexBucket, Key: `${chatId}.json`, Body: JSON.stringify(history) }));
-    
     return aiResponse;
   } catch (error) {
     if (error.response && error.response.status === 400) {
       await clearHistoryForChat(chatId);
       return processTextMessage(text, chatId);
     } else {
-      throw error;
+      logger.error('ERROR: ', error);
     }
   }
 }
@@ -178,7 +191,7 @@ async function clearHistoryForChat(chatId) {
   try {
     await s3.send(new PutObjectCommand({ Bucket: yandexBucket, Key: `${chatId}.json`, Body: '[]' }));
   } catch (error) {
-    console.error(error);
+    logger.error('ERROR: ', error);
   }
 }
 
@@ -224,9 +237,7 @@ async function notifyAdmin(userInfo, message) {
 // Обработка сообщений
 const handlers = {
   'supergroup': async (ctx, requestBody) => {
-    //console.log('Supergroup handler called');
     if (tgBotSuperChats.includes(requestBody.message.chat.id.toString())) {
-      //console.log('Supergroup check passed');
       await bot.handleUpdate(requestBody);
     } else {
       console.log('Supergroup check failed');
@@ -234,9 +245,7 @@ const handlers = {
     }
   },
   'private': async (ctx, requestBody) => {
-    //console.log('Private handler called');
     if (tgBotChats.includes(requestBody.message.from.id.toString())) {
-      //console.log('Private check passed');
       await bot.handleUpdate(requestBody);
     } else {
       console.log('Private check failed');
@@ -259,7 +268,6 @@ module.exports.handler = async (event, context) => {
     if (requestBody.my_chat_member) {
       // Do something
     } else if (requestBody.message && handlers[requestBody.message.chat.type]) {
-      //console.log('Handler exists for this chat type');
       await handlers[requestBody.message.chat.type](context, requestBody);
     } else {
       console.log('No handler exists for this chat type');
@@ -270,7 +278,7 @@ module.exports.handler = async (event, context) => {
       body: 'ok',
     };
   } catch (error) {
-    console.error(error);
+    logger.error('ERROR: ', error);
     return {
       statusCode: 500,
       body: 'Internal Server Error',
